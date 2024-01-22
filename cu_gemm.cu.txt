@@ -1,0 +1,82 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <cuda_runtime.h>
+
+#define THREAD_X_PREBLOCK 4
+#define PELE(ARR, X, Y, i, j) ((ARR) + (i) * (Y) + (j))
+
+__global__ void kernel(int *A, int *B, int s1, int s2, int s3, int *C) {
+	int i = blockDim.x * blockIdx.x + threadIdx.x; 
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
+    if (i < 0 || i >= s1 || j < 0 || j >= s3)
+        return;
+    *PELE(C, s1, s3, i, j) = 0;
+    for (int t = 0; t < s2; t++) {
+        *PELE(C, s1, s3, i, j) += *PELE(A, s1, s2, i, t) * *PELE(B, s2, s3, t, j);
+    }
+}
+
+void print_matrix(int *A, int a, int b) {
+    for (int i = 0; i < a; i++) {
+        for (int j = 0; j < b; j++) {
+            if (j != b - 1) {
+                printf("%d ", *PELE(A, a, b, i, j));
+            } else {
+                printf("%d\n", *PELE(A, a, b, i, j));
+            }
+        }
+    }
+}
+
+void read_matrix(int *A, int a, int b) {
+    for (int i = 0; i < a; i++) {
+        for (int j = 0; j < b; j++) {
+            scanf("%d", PELE(A, a, b, i, j));
+        }
+    }
+}
+
+int main1(void) {
+    int s1, s2, s3;
+    scanf("%d%d", &s1, &s2);
+    int *A = (int*)malloc(s1 * s2 * sizeof(int));
+    read_matrix(A, s1, s2);
+    scanf("%d%d", &s2, &s3);
+    int *B = (int*)malloc(s2 * s3 * sizeof(int));
+    read_matrix(B, s2, s3);
+    int *dA, *dB, *dC;
+    cudaMalloc((void**)&dA, s1 * s2 * sizeof(int));
+    cudaMalloc((void**)&dB, s2 * s3 * sizeof(int));
+    cudaMalloc((void**)&dC, s1 * s3 * sizeof(int));
+
+	cudaMemcpy(dA, A, s1 * s2 * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(dB, B, s2 * s3 * sizeof(int), cudaMemcpyHostToDevice);
+    // cudaMemcpy(dC,c,size,cudaMemcpyHostToDevice);
+    // int threadPerBlock = dim3(16, 16);
+    // int blockPerGrid = (s1 * s3 + threadPerBlock - 1)/threadPerBlock;
+    dim3 threadPerBlock(THREAD_X_PREBLOCK, THREAD_X_PREBLOCK);
+    dim3 blockPerGrid((s1 + THREAD_X_PREBLOCK - 1) / THREAD_X_PREBLOCK, (s3 + THREAD_X_PREBLOCK - 1) / THREAD_X_PREBLOCK);
+    kernel <<< blockPerGrid, threadPerBlock >>> (dA, dB, s1, s2, s3, dC);
+
+    int *C = (int*)malloc(s1 * s3 * sizeof(int));
+    cudaMemcpy(C, dC, s1 * s3 * sizeof(int), cudaMemcpyDeviceToHost);
+
+
+    //for (int i = 0; i < s1; i++) {
+    //    for (int j = 0; j < s3; j++) {
+    //        kernel(A, B, s1, s2, s3, C, i, j);
+    //    }
+    //}
+    print_matrix(C, s1, s3);
+    cudaFree(dA);
+    cudaFree(dB);
+    cudaFree(dC);
+    free(A);
+    free(B);
+    free(C);
+    return 0;
+}
+
+int main(void) {
+	main1();
+}
